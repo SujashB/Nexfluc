@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { AgentState, Orb } from "@/components/ui/orb"
 import { FloatingNav } from "@/components/ui/floating-navbar"
 import { ConversationBar } from "@/components/ui/conversation-bar"
-import { Textarea } from "@/components/ui/textarea"
 import { InsightsPane } from "@/components/ui/insights-pane"
 
 const ORBS: [string, string][] = [
@@ -99,15 +98,6 @@ export default function Home() {
         {/* Insights Pane */}
         <div className="mb-6 w-full flex justify-center">
           <InsightsPane messages={conversationMessages} />
-        </div>
-
-        {/* Textarea Section */}
-        <div className="w-full max-w-2xl">
-          <Textarea
-            placeholder="Type your message here..."
-            className="min-h-[120px] resize-none"
-            disabled={!isConnected}
-          />
         </div>
       </main>
     </div>

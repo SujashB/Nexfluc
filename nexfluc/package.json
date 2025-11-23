@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@elevenlabs/cli": "^0.3.0",
+    "@elevenlabs/elevenlabs-js": "^2.25.0",
     "@elevenlabs/react": "^0.11.0",
     "@modelcontextprotocol/sdk": "^1.22.0",
     "@react-three/drei": "^10.7.7",
@@ -21,6 +22,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "components": "^0.1.0",
+    "d3": "^7.9.0",
+    "dotenv": "^17.2.3",
     "groq-sdk": "^0.36.0",
     "jotai": "^2.15.1",
     "lucide-react": "^0.554.0",

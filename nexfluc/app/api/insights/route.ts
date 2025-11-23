@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import Groq from "groq-sdk"
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages } = await request.json()
+    const { messages, transcription } = await request.json()
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -11,15 +12,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const groqApiKey = process.env.GROQ_API_KEY
     const openaiApiKey = process.env.OPENAI_API_KEY
-    if (!openaiApiKey) {
+    
+    if (!groqApiKey && !openaiApiKey) {
       return NextResponse.json(
-        { error: "OpenAI API key not configured" },
+        { error: "GROQ_API_KEY or OPENAI_API_KEY must be configured" },
         { status: 500 }
       )
     }
 
-    // Format conversation messages for OpenAI
+    // Format conversation messages
     const conversationText = messages
       .map((msg: { source: string; message: string }) => {
         const role = msg.source === "user" ? "User" : "AI Agent"
@@ -27,51 +30,130 @@ export async function POST(request: NextRequest) {
       })
       .join("\n\n")
 
-    // Call OpenAI API to generate insights
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an AI assistant that analyzes conversations and generates concise, actionable insights. Generate 3-5 short insights or suggestions based on the conversation. Format each insight as a separate bullet point. Keep insights brief (1-2 sentences each).",
-          },
-          {
-            role: "user",
-            content: `Analyze this conversation and provide insights:\n\n${conversationText}`,
-          },
-        ],
-        max_tokens: 300,
-        temperature: 0.7,
-      }),
-    })
+    const fullText = transcription
+      ? `${conversationText}\n\nLive Transcription: ${transcription}`
+      : conversationText
 
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error("OpenAI API error:", errorData)
-      return NextResponse.json(
-        { error: "Failed to generate insights" },
-        { status: response.status }
-      )
+    const systemPrompt = `You are an AI assistant that analyzes startup ideas from conversations and provides:
+1. Similar startups (3-5) with similarity scores (0-1), descriptions, and tags
+2. A summary of the idea's potential
+3. Differentiation strategies (3-5 points)
+4. Network graph data with nodes (startups, concepts, features) and edges (relationships)
+
+Return ONLY valid JSON in this exact format:
+{
+  "startups": [
+    {
+      "name": "Startup Name",
+      "similarity": 0.85,
+      "description": "Brief description",
+      "tags": ["Tag1", "Tag2"],
+      "url": "https://example.com"
+    }
+  ],
+  "summary": "1-2 sentence summary of the idea's potential",
+  "differentiation": [
+    "First differentiation point",
+    "Second differentiation point"
+  ],
+  "network": {
+    "nodes": [
+      {"id": "node1", "label": "Concept", "type": "concept", "size": 10},
+      {"id": "node2", "label": "Feature", "type": "feature", "size": 8}
+    ],
+    "edges": [
+      {"source": "node1", "target": "node2", "strength": 0.7}
+    ]
+  }
+}`
+
+    let content = "{}"
+
+    // Try GROQ first, fallback to OpenAI
+    if (groqApiKey) {
+      try {
+        const groq = new Groq({ apiKey: groqApiKey })
+        const completion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `Analyze this conversation about a startup idea:\n\n${fullText}`,
+            },
+          ],
+          model: "llama-3.3-70b-versatile",
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 2000,
+        })
+        content = completion.choices[0]?.message?.content || "{}"
+      } catch (groqError) {
+        console.error("GROQ API error:", groqError)
+        // Fall through to OpenAI fallback
+      }
     }
 
-    const data = await response.json()
-    const insightsText = data.choices[0]?.message?.content || ""
+    // Fallback to OpenAI if GROQ failed or not configured
+    if (content === "{}" && openaiApiKey) {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `Analyze this conversation about a startup idea:\n\n${fullText}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2000,
+          temperature: 0.7,
+        }),
+      })
 
-    // Parse insights into an array
-    const insights = insightsText
-      .split(/\n+/)
-      .map((line: string) => line.replace(/^[-•*]\s*/, "").trim())
-      .filter((line: string) => line.length > 0)
-      .slice(0, 5) // Limit to 5 insights
+      if (!response.ok) {
+        const errorData = await response.text()
+        console.error("OpenAI API error:", errorData)
+        throw new Error("Failed to generate insights")
+      }
 
-    return NextResponse.json({ insights })
+      const data = await response.json()
+      content = data.choices[0]?.message?.content || "{}"
+    }
+
+    if (content === "{}") {
+      throw new Error("Failed to generate insights from any provider")
+    }
+
+    try {
+      const parsed = JSON.parse(content)
+
+      // Ensure proper structure
+      const result = {
+        startups: parsed.startups || [],
+        summary: parsed.summary || "Your idea shows potential in the market.",
+        differentiation: parsed.differentiation || [],
+        network: parsed.network || {
+          nodes: [],
+          edges: [],
+        },
+      }
+
+      return NextResponse.json(result)
+    } catch (parseError) {
+      console.error("Failed to parse API response:", parseError)
+      return NextResponse.json({
+        startups: [],
+        summary: "Analyzing your idea...",
+        differentiation: [],
+        network: { nodes: [], edges: [] },
+      })
+    }
   } catch (error) {
     console.error("Error generating insights:", error)
     return NextResponse.json(
