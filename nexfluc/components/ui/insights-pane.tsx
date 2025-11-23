@@ -63,7 +63,7 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
       <Card
         ref={ref}
         className={cn(
-          "w-full max-w-2xl border-stone-700/50 bg-stone-900/40 backdrop-blur-md",
+          "w-full max-w-6xl border-stone-700/50 bg-stone-900/40 backdrop-blur-md",
           className
         )}
       >
@@ -72,30 +72,30 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
             Insights & Suggestions
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-h-[300px]">
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
               <span className="ml-2 text-sm text-stone-400">
                 Generating insights...
               </span>
             </div>
           ) : error ? (
-            <div className="py-4 text-sm text-red-400">{error}</div>
+            <div className="py-8 text-sm text-red-400">{error}</div>
           ) : insights.length > 0 ? (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {insights.map((insight, index) => (
                 <li
                   key={index}
-                  className="flex items-start gap-2 text-sm text-stone-200"
+                  className="flex items-start gap-3 text-base text-stone-200"
                 >
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-500" />
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-stone-500" />
                   <span>{insight}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="py-4 text-sm text-stone-500">
+            <div className="py-12 text-sm text-stone-500">
               No insights available yet. Continue the conversation to generate
               insights.
             </div>

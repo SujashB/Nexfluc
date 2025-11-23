@@ -66,9 +66,9 @@ export default function Home() {
       {/* Main Content */}
       <main className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 py-12 pt-24">
         {/* Orb Section */}
-        <div className="mb-12 flex flex-col items-center">
+        <div className="mb-6 flex flex-col items-center">
           <div className="relative">
-            <div className="relative h-96 w-96 rounded-full bg-stone-800/30 p-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)] backdrop-blur-md border border-stone-700/30">
+            <div className="relative h-64 w-64 rounded-full bg-stone-800/30 p-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)] backdrop-blur-md border border-stone-700/30">
               <div className="h-full w-full overflow-hidden rounded-full bg-stone-900/20 shadow-[inset_0_0_12px_rgba(0,0,0,0.2)] backdrop-blur-sm">
                 <Orb
                   colors={ORBS[0]}
