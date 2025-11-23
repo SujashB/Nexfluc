@@ -6,6 +6,7 @@ import { FloatingNav } from "@/components/ui/floating-navbar"
 import { ConversationBar } from "@/components/ui/conversation-bar"
 import { InsightsPane } from "@/components/ui/insights-pane"
 import { NetworkGraphCanvas } from "@/components/ui/network-graph-canvas"
+import { FutureBrandVisualization } from "@/components/ui/future-brand-visualization"
 import { Card } from "@/components/ui/card"
 
 const ORBS: [string, string][] = [
@@ -33,6 +34,12 @@ export default function Home() {
   const [networkEdges, setNetworkEdges] = useState<
     Array<{ source: string | any; target: string | any; strength?: number }>
   >([])
+  const [insightsData, setInsightsData] = useState<{
+    summary?: string
+    startups?: Array<{ name: string; similarity: number; description?: string; tags?: string[] }>
+    differentiation?: string[]
+  } | null>(null)
+  const [transcriptionText, setTranscriptionText] = useState<string>("")
 
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || ""
 
@@ -111,15 +118,16 @@ export default function Home() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="mb-6 w-full max-w-7xl flex gap-6 items-stretch">
+        <div className="mb-6 w-full max-w-7xl flex gap-6 items-start">
           {/* Network Graph Panel - Left Side */}
-          <div className="w-1/3 flex-shrink-0">
-            <Card className="w-full h-full border-stone-700/50 bg-stone-900/40 backdrop-blur-md">
-              <div className="flex h-full flex-col space-y-4 p-6">
+          <div className="w-1/3 flex-shrink-0 flex flex-col gap-6">
+            {/* Network Visualization */}
+            <Card className="w-full border-stone-700/50 bg-stone-900/40 backdrop-blur-md">
+              <div className="flex flex-col space-y-4 p-6">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                   Network Visualization
                 </h3>
-                <div className="flex-1">
+                <div className="w-full aspect-square">
                   <NetworkGraphCanvas
                     nodes={networkNodes.map((n) => ({
                       id: n.id,
@@ -133,15 +141,24 @@ export default function Home() {
                       strength: e.strength,
                     }))}
                     width={400}
-                    height={600}
-                    className="h-full"
+                    height={400}
+                    className="h-full w-full"
                   />
                 </div>
               </div>
             </Card>
+            
+            {/* Future Brand Visualization - Square below network visualization */}
+            <div className="w-full aspect-square">
+              <FutureBrandVisualization
+                transcription={transcriptionText}
+                insights={insightsData || undefined}
+                className="h-full"
+              />
+            </div>
           </div>
 
-          {/* Insights Pane - Right Side */}
+          {/* Insights Pane - Middle */}
           <div className="flex-1">
             <InsightsPane 
               messages={conversationMessages}
@@ -149,8 +166,22 @@ export default function Home() {
                 setNetworkNodes(nodes)
                 setNetworkEdges(edges)
               }}
+              onInsightsUpdate={(insights) => {
+                setInsightsData(insights)
+              }}
+              onTranscriptionUpdate={(text) => {
+                setTranscriptionText(text)
+              }}
             />
           </div>
+
+          {/* Future Brand Visualization - Right Side */}
+          {/* <div className="w-1/3 flex-shrink-0">
+            <FutureBrandVisualization
+              transcription={transcriptionText}
+              insights={insightsData || undefined}
+            />
+          </div> */}
         </div>
       </main>
     </div>

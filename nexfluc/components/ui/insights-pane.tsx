@@ -122,6 +122,17 @@ export interface InsightsPaneProps {
     }>,
     edges: Array<{ source: string | any; target: string | any; strength?: number }>
   ) => void
+  onInsightsUpdate?: (insights: {
+    summary?: string
+    startups?: Array<{ 
+      name: string
+      similarity: number
+      description?: string
+      tags?: string[]
+    }>
+    differentiation?: string[]
+  }) => void
+  onTranscriptionUpdate?: (text: string) => void
 }
 
 export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
@@ -133,6 +144,8 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
       startups: externalStartups,
       insights: externalInsights,
       onNetworkUpdate,
+      onInsightsUpdate,
+      onTranscriptionUpdate,
     },
     ref
   ) => {
@@ -169,6 +182,9 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
         setTranscription(data.text)
         transcriptionRef.current = data.text
         updateNetworkGraph(data.text)
+        if (onTranscriptionUpdate) {
+          onTranscriptionUpdate(data.text)
+        }
       },
       onCommittedTranscript: (data) => {
         console.log("Committed transcript:", data.text)
@@ -431,13 +447,29 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
           }
 
           // Update with real data
-          setStartups(data.startups || MOCK_STARTUPS)
-          setInsights({
+          const updatedStartups = data.startups || MOCK_STARTUPS
+          const updatedInsights = {
             summary: data.summary || MOCK_INSIGHTS.summary,
             differentiation: data.differentiation || MOCK_INSIGHTS.differentiation,
             network: data.network || MOCK_INSIGHTS.network,
-          })
+          }
+          setStartups(updatedStartups)
+          setInsights(updatedInsights)
           setStatus("ready")
+          
+          // Notify parent component of insights update
+          if (onInsightsUpdate) {
+            onInsightsUpdate({
+              summary: updatedInsights.summary,
+              startups: updatedStartups.map((s: StartupNode) => ({ 
+                name: s.name, 
+                similarity: s.similarity,
+                description: s.description,
+                tags: s.tags,
+              })),
+              differentiation: updatedInsights.differentiation,
+            })
+          }
         } catch (err) {
           console.error("Error fetching insights:", err)
           setStatus("error")
