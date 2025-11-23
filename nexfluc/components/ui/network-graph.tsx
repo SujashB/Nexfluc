@@ -9,156 +9,182 @@ export interface NetworkNode {
   label: string
   type: "startup" | "concept" | "feature" | "market"
   size?: number
+  description?: string
+  x?: number
+  y?: number
 }
 
 export interface NetworkEdge {
-  source: string
-  target: string
+  source: string | NetworkNode
+  target: string | NetworkNode
   strength?: number
 }
 
 export interface NetworkGraphProps {
   nodes: NetworkNode[]
   edges: NetworkEdge[]
-  width?: number
+  width?: number | string
   height?: number
   className?: string
 }
 
 export const NetworkGraph = React.forwardRef<HTMLDivElement, NetworkGraphProps>(
-  ({ nodes, edges, width = 600, height = 400, className }, ref) => {
-    const svgRef = React.useRef<SVGSVGElement>(null)
-    const [dimensions, setDimensions] = React.useState({ width, height })
+  ({ nodes, edges, width = "100%", height = 500, className }, ref) => {
+    const canvasRef = React.useRef<HTMLCanvasElement>(null)
+    const containerRef = React.useRef<HTMLDivElement>(null)
+    const simulationRef = React.useRef<d3.Simulation<any, any> | null>(null)
 
     React.useEffect(() => {
-      if (!svgRef.current || nodes.length === 0) return
+      if (!canvasRef.current || !containerRef.current || nodes.length === 0) return
 
-      const svg = d3.select(svgRef.current)
-      svg.selectAll("*").remove()
+      const canvas = canvasRef.current
+      const context = canvas.getContext("2d")
+      if (!context) return
 
-      // Set up simulation
+      // Set canvas dimensions
+      const containerWidth = containerRef.current.clientWidth || 960
+      const containerHeight = height
+      canvas.width = containerWidth
+      canvas.height = containerHeight
+
+      // Convert string IDs to node objects for D3
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+      const d3Nodes = nodes.map((node) => ({
+        ...node,
+        x: node.x || Math.random() * containerWidth,
+        y: node.y || Math.random() * containerHeight,
+        fx: undefined,
+        fy: undefined,
+      }))
+
+      const d3Links = edges.map((edge) => {
+        const source =
+          typeof edge.source === "string"
+            ? d3Nodes.find((n) => n.id === edge.source) || d3Nodes[0]
+            : edge.source
+        const target =
+          typeof edge.target === "string"
+            ? d3Nodes.find((n) => n.id === edge.target) || d3Nodes[0]
+            : edge.target
+        return {
+          source,
+          target,
+          strength: edge.strength || 0.5,
+        }
+      })
+
+      // Set up force simulation
       const simulation = d3
-        .forceSimulation(nodes as any)
+        .forceSimulation(d3Nodes)
         .force(
           "link",
           d3
-            .forceLink(edges)
+            .forceLink(d3Links)
             .id((d: any) => d.id)
-            .distance((d: any) => 100 - (d.strength || 0.5) * 50)
+            .distance((d: any) => 150 - (d.strength || 0.5) * 50)
         )
-        .force("charge", d3.forceManyBody().strength(-300))
-        .force("center", d3.forceCenter(dimensions.width / 2, dimensions.height / 2))
-        .force("collision", d3.forceCollide().radius((d: any) => (d.size || 10) + 5))
+        .force("charge", d3.forceManyBody().strength(-500))
+        .force("x", d3.forceX(containerWidth / 2))
+        .force("y", d3.forceY(containerHeight / 2))
+        .force("collision", d3.forceCollide().radius((d: any) => (d.size || 12) + 5))
 
-      // Create links
-      const link = svg
-        .append("g")
-        .selectAll("line")
-        .data(edges)
-        .enter()
-        .append("line")
-        .attr("stroke", "rgba(255, 255, 255, 0.2)")
-        .attr("stroke-width", (d) => (d.strength || 0.5) * 2)
-        .attr("stroke-opacity", 0.6)
+      simulationRef.current = simulation
 
-      // Create nodes
-      const node = svg
-        .append("g")
-        .selectAll("circle")
-        .data(nodes)
-        .enter()
-        .append("circle")
-        .attr("r", (d) => d.size || 8)
-        .attr("fill", (d) => {
-          switch (d.type) {
-            case "startup":
-              return "rgba(249, 115, 22, 0.6)" // Orange
-            case "concept":
-              return "rgba(59, 130, 246, 0.6)" // Blue
-            case "feature":
-              return "rgba(168, 85, 247, 0.6)" // Purple
-            default:
-              return "rgba(156, 163, 175, 0.6)" // Gray
-          }
+      // Render function
+      function render() {
+        if (!context) return
+
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height)
+
+        // Draw links
+        d3Links.forEach((link: any) => {
+          const source = link.source
+          const target = link.target
+          if (!source || !target || source.x === undefined || target.x === undefined) return
+
+          context.beginPath()
+          context.moveTo(source.x, source.y)
+          context.lineTo(target.x, target.y)
+          context.strokeStyle = "rgba(255, 255, 255, 0.3)"
+          context.lineWidth = (link.strength || 0.5) * 2
+          context.stroke()
         })
-        .attr("stroke", "rgba(255, 255, 255, 0.3)")
-        .attr("stroke-width", 1.5)
-        .call(
-          d3
-            .drag<SVGCircleElement, NetworkNode>()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended) as any
-        )
 
-      // Add labels
-      const labels = svg
-        .append("g")
-        .selectAll("text")
-        .data(nodes)
-        .enter()
-        .append("text")
-        .text((d) => d.label)
-        .attr("font-size", "10px")
-        .attr("fill", "rgba(255, 255, 255, 0.8)")
-        .attr("dx", (d) => (d.size || 8) + 5)
-        .attr("dy", 4)
+        // Draw nodes
+        d3Nodes.forEach((node: any) => {
+          if (node.x === undefined || node.y === undefined) return
 
-      // Update positions on tick
-      simulation.on("tick", () => {
-        link
-          .attr("x1", (d: any) => d.source.x)
-          .attr("y1", (d: any) => d.source.y)
-          .attr("x2", (d: any) => d.target.x)
-          .attr("y2", (d: any) => d.target.y)
+          const radius = node.size || 12
 
-        node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y)
+          // Draw node circle
+          context.beginPath()
+          context.arc(node.x, node.y, radius, 0, 2 * Math.PI)
 
-        labels.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y)
-      })
+          // Set color based on type
+          switch (node.type) {
+            case "startup":
+              context.fillStyle = "rgba(249, 115, 22, 0.8)" // Orange
+              break
+            case "concept":
+              context.fillStyle = "rgba(59, 130, 246, 0.8)" // Blue
+              break
+            case "feature":
+              context.fillStyle = "rgba(168, 85, 247, 0.8)" // Purple
+              break
+            default:
+              context.fillStyle = "rgba(156, 163, 175, 0.8)" // Gray
+          }
 
-      function dragstarted(event: any) {
-        if (!event.active) simulation.alphaTarget(0.3).restart()
-        event.subject.fx = event.subject.x
-        event.subject.fy = event.subject.y
+          context.fill()
+          context.strokeStyle = "rgba(255, 255, 255, 0.5)"
+          context.lineWidth = 2
+          context.stroke()
+
+          // Draw label
+          context.fillStyle = "rgba(255, 255, 255, 0.9)"
+          context.font = "11px sans-serif"
+          context.textAlign = "center"
+          context.textBaseline = "top"
+          const label = node.label.length > 15 ? node.label.substring(0, 15) + "..." : node.label
+          context.fillText(label, node.x, node.y + radius + 5)
+        })
       }
 
-      function dragged(event: any) {
-        event.subject.fx = event.x
-        event.subject.fy = event.y
-      }
+      // Update on simulation tick
+      simulation.on("tick", render)
 
-      function dragended(event: any) {
-        if (!event.active) simulation.alphaTarget(0)
-        event.subject.fx = null
-        event.subject.fy = null
-      }
+      // Initial render
+      render()
 
       // Handle resize
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const { width: w, height: h } = entry.contentRect
-          setDimensions({ width: w, height: h })
-          simulation.force("center", d3.forceCenter(w / 2, h / 2))
+          canvas.width = w
+          canvas.height = h
+          simulation.force("x", d3.forceX(w / 2))
+          simulation.force("y", d3.forceY(h / 2))
+          render()
         }
       })
 
-      if (svgRef.current?.parentElement) {
-        resizeObserver.observe(svgRef.current.parentElement)
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current)
       }
 
       return () => {
         simulation.stop()
         resizeObserver.disconnect()
       }
-    }, [nodes, edges, dimensions])
+    }, [nodes, edges, height])
 
     if (nodes.length === 0) {
       return (
         <div
           ref={ref}
           className={cn(
-            "flex h-[400px] items-center justify-center rounded-lg border border-stone-700/50 bg-stone-900/20",
+            "flex h-[500px] items-center justify-center rounded-lg border border-stone-700/50 bg-stone-900/20",
             className
           )}
         >
@@ -168,12 +194,24 @@ export const NetworkGraph = React.forwardRef<HTMLDivElement, NetworkGraphProps>(
     }
 
     return (
-      <div ref={ref} className={cn("w-full", className)}>
-        <svg
-          ref={svgRef}
-          width={dimensions.width}
-          height={dimensions.height}
-          className="w-full rounded-lg border border-stone-700/50 bg-stone-900/20"
+      <div
+        ref={(node) => {
+          if (ref) {
+            if (typeof ref === "function") {
+              ref(node)
+            } else {
+              ref.current = node
+            }
+          }
+          containerRef.current = node
+        }}
+        className={cn("w-full rounded-lg border border-stone-700/50 bg-stone-900/20", className)}
+        style={{ height: `${height}px`, minHeight: `${height}px` }}
+      >
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full"
+          style={{ display: "block" }}
         />
       </div>
     )
@@ -181,4 +219,3 @@ export const NetworkGraph = React.forwardRef<HTMLDivElement, NetworkGraphProps>(
 )
 
 NetworkGraph.displayName = "NetworkGraph"
-

@@ -5,13 +5,6 @@ export async function POST(request: NextRequest) {
   try {
     const { messages, transcription } = await request.json()
 
-    if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json(
-        { error: "Messages array is required" },
-        { status: 400 }
-      )
-    }
-
     const groqApiKey = process.env.GROQ_API_KEY
     const openaiApiKey = process.env.OPENAI_API_KEY
     
@@ -22,17 +15,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Format conversation messages
-    const conversationText = messages
-      .map((msg: { source: string; message: string }) => {
-        const role = msg.source === "user" ? "User" : "AI Agent"
-        return `${role}: ${msg.message}`
-      })
-      .join("\n\n")
-
-    const fullText = transcription
-      ? `${conversationText}\n\nLive Transcription: ${transcription}`
-      : conversationText
+    // Prioritize transcription - use it as primary source if available
+    let fullText = ""
+    if (transcription && transcription.trim().length > 20) {
+      // Use transcription as primary source
+      fullText = transcription
+    } else if (messages && Array.isArray(messages) && messages.length > 0) {
+      // Fallback to messages if no transcription
+      const conversationText = messages
+        .map((msg: { source: string; message: string }) => {
+          const role = msg.source === "user" ? "User" : "AI Agent"
+          return `${role}: ${msg.message}`
+        })
+        .join("\n\n")
+      fullText = conversationText
+    } else {
+      return NextResponse.json(
+        { error: "Transcription or messages required" },
+        { status: 400 }
+      )
+    }
 
     const systemPrompt = `You are an AI assistant that analyzes startup ideas from conversations and provides:
 1. Similar startups (3-5) with similarity scores (0-1), descriptions, and tags

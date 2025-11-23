@@ -14,8 +14,8 @@ import {
   Mic,
   MicOff,
 } from "lucide-react"
-import { NetworkGraph } from "./network-graph"
 import { NetworkGraph3D } from "./network-graph-3d"
+import { NetworkGraphCanvas } from "./network-graph-canvas"
 import { extractEntitiesFromText } from "@/lib/extract-entities"
 
 type StartupNode = {
@@ -111,6 +111,17 @@ export interface InsightsPaneProps {
   status?: Status
   startups?: StartupNode[]
   insights?: Insights
+  onNetworkUpdate?: (
+    nodes: Array<{
+      id: string
+      label: string
+      type: "startup" | "concept" | "feature" | "market"
+      size?: number
+      description?: string
+      sources?: Array<{ title: string; url: string }>
+    }>,
+    edges: Array<{ source: string | any; target: string | any; strength?: number }>
+  ) => void
 }
 
 export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
@@ -121,6 +132,7 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
       status: externalStatus,
       startups: externalStartups,
       insights: externalInsights,
+      onNetworkUpdate,
     },
     ref
   ) => {
@@ -138,13 +150,16 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
         size?: number
         description?: string
         sources?: Array<{ title: string; url: string }>
+        x?: number
+        y?: number
       }>
     >([])
     const [networkEdges, setNetworkEdges] = React.useState<
-      Array<{ source: string; target: string; strength?: number }>
+      Array<{ source: string | any; target: string | any; strength?: number }>
     >([])
     const lastMessageCountRef = React.useRef(0)
     const transcriptionRef = React.useRef("")
+    const lastTranscriptionLengthRef = React.useRef(0)
 
     // Scribe transcription setup
     const scribe = useScribe({
@@ -287,6 +302,11 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
             }
 
             setNetworkEdges(edges)
+            
+            // Notify parent component of network updates
+            if (onNetworkUpdate) {
+              onNetworkUpdate(nodes, edges)
+            }
           } else {
             // Fallback: use entities without enrichment
             setNetworkNodes(entities)
@@ -304,12 +324,17 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
               })
             }
             setNetworkEdges(basicEdges)
+            
+            // Notify parent component of network updates
+            if (onNetworkUpdate) {
+              onNetworkUpdate(entities, basicEdges)
+            }
           }
         } catch (error) {
           console.error("Error updating network graph:", error)
         }
       },
-      []
+      [onNetworkUpdate]
     )
 
     // Memoize dependencies to prevent array size changes
@@ -342,24 +367,45 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
       const currentMessages = messagesRef.current
       const currentTranscription = transcriptionRef.current
 
-      // Auto-generate insights from messages
-      if (currentMessages.length < 2) {
-        setStatus("idle")
-        setStartups([])
-        setInsights(null)
+      // Auto-generate insights from transcription (primary) or messages
+      const hasTranscription = currentTranscription && currentTranscription.trim().length > 20
+      const hasMessages = currentMessages.length >= 2
+
+      if (!hasTranscription && !hasMessages) {
+        // Don't clear insights when transcription stops - keep them visible
+        // Only set to idle if we never had any data
+        if (startups.length === 0 && !insights) {
+          setStatus("idle")
+        }
         lastMessageCountRef.current = 0
         return
       }
 
-      // Only generate if we have new messages
-      if (currentMessages.length === lastMessageCountRef.current) {
+      // Only generate if we have new transcription or messages
+      const transcriptionLength = currentTranscription?.length || 0
+      
+      if (
+        !hasTranscription &&
+        currentMessages.length === lastMessageCountRef.current
+      ) {
         return
       }
 
-      // Debounce: wait a bit after the last message before generating insights
+      if (
+        hasTranscription &&
+        transcriptionLength === lastTranscriptionLengthRef.current &&
+        currentMessages.length === lastMessageCountRef.current
+      ) {
+        return
+      }
+
+      // Debounce: wait a bit after the last update before generating insights
+      // Use shorter debounce for transcription (1.5s) vs messages (2s)
+      const debounceTime = hasTranscription ? 1500 : 2000
       const timeoutId = setTimeout(async () => {
         setStatus("loading")
         lastMessageCountRef.current = currentMessages.length
+        lastTranscriptionLengthRef.current = transcriptionLength
 
         try {
           const response = await fetch("/api/insights", {
@@ -399,7 +445,7 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
           setStartups(MOCK_STARTUPS)
           setInsights(MOCK_INSIGHTS)
         }
-      }, 2000) // Wait 2 seconds after last message
+      }, debounceTime) // Wait 1.5s for transcription, 2s for messages
 
       return () => clearTimeout(timeoutId)
     }, [messages.length, transcription, externalStatus, externalStartups, externalInsights])
@@ -578,11 +624,11 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
         <Card
           ref={ref}
           className={cn(
-            "w-full max-w-6xl border-stone-700/50 bg-stone-900/40 backdrop-blur-md",
+            "w-full max-w-4xl h-full border-stone-700/50 bg-stone-900/40 backdrop-blur-md",
             className
           )}
         >
-          <div className="min-h-[300px] space-y-6 p-6">
+          <div className="flex h-full flex-col min-h-[300px] space-y-6 p-6">
             {/* Header Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -668,9 +714,10 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 {displayStartups.map((startup, index) => {
                   const isSelected = selectedId === startup.id
+                  const uniqueKey = startup.id || `startup-${index}`
                   return (
                     <motion.div
-                      key={startup.id}
+                      key={uniqueKey}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.1 }}
@@ -762,42 +809,6 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
                 ))}
               </div>
             </div>
-
-            {/* Network Visualization Section */}
-            {displayInsights.network &&
-              displayInsights.network.nodes.length > 0 && (
-                <>
-                  <div className="border-t border-stone-700/50" />
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                      Network Visualization
-                    </h3>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      {/* 2D Network Graph */}
-                      <div className="space-y-2">
-                        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-                          2D Network
-                        </h4>
-                        <NetworkGraph
-                          nodes={displayInsights.network.nodes}
-                          edges={displayInsights.network.edges}
-                          height={400}
-                        />
-                      </div>
-                      {/* 3D Network Graph */}
-                      <div className="space-y-2">
-                        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-                          3D Network
-                        </h4>
-                        <NetworkGraph3D
-                          nodes={displayInsights.network.nodes}
-                          edges={displayInsights.network.edges}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
           </div>
         </Card>
       </motion.div>

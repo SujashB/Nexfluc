@@ -5,6 +5,8 @@ import { AgentState, Orb } from "@/components/ui/orb"
 import { FloatingNav } from "@/components/ui/floating-navbar"
 import { ConversationBar } from "@/components/ui/conversation-bar"
 import { InsightsPane } from "@/components/ui/insights-pane"
+import { NetworkGraphCanvas } from "@/components/ui/network-graph-canvas"
+import { Card } from "@/components/ui/card"
 
 const ORBS: [string, string][] = [
   ["#CADCFC", "#A0B9D1"],
@@ -17,6 +19,19 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false)
   const [conversationMessages, setConversationMessages] = useState<
     Array<{ source: "user" | "ai"; message: string }>
+  >([])
+  const [networkNodes, setNetworkNodes] = useState<
+    Array<{
+      id: string
+      label: string
+      type: "startup" | "concept" | "feature" | "market"
+      size?: number
+      description?: string
+      sources?: Array<{ title: string; url: string }>
+    }>
+  >([])
+  const [networkEdges, setNetworkEdges] = useState<
+    Array<{ source: string | any; target: string | any; strength?: number }>
   >([])
 
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || ""
@@ -95,9 +110,47 @@ export default function Home() {
           />
         </div>
 
-        {/* Insights Pane */}
-        <div className="mb-6 w-full flex justify-center">
-          <InsightsPane messages={conversationMessages} />
+        {/* Main Content Grid */}
+        <div className="mb-6 w-full max-w-7xl flex gap-6 items-stretch">
+          {/* Network Graph Panel - Left Side */}
+          <div className="w-1/3 flex-shrink-0">
+            <Card className="w-full h-full border-stone-700/50 bg-stone-900/40 backdrop-blur-md">
+              <div className="flex h-full flex-col space-y-4 p-6">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                  Network Visualization
+                </h3>
+                <div className="flex-1">
+                  <NetworkGraphCanvas
+                    nodes={networkNodes.map((n) => ({
+                      id: n.id,
+                      label: n.label,
+                      type: n.type,
+                      size: n.size,
+                    }))}
+                    links={networkEdges.map((e) => ({
+                      source: e.source,
+                      target: e.target,
+                      strength: e.strength,
+                    }))}
+                    width={400}
+                    height={600}
+                    className="h-full"
+                  />
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Insights Pane - Right Side */}
+          <div className="flex-1">
+            <InsightsPane 
+              messages={conversationMessages}
+              onNetworkUpdate={(nodes, edges) => {
+                setNetworkNodes(nodes)
+                setNetworkEdges(edges)
+              }}
+            />
+          </div>
         </div>
       </main>
     </div>
