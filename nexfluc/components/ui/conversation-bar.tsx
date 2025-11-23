@@ -265,13 +265,6 @@ export const ConversationBar = React.forwardRef<
                             agentState === "disconnected" && "opacity-0"
                           )}
                         />
-                        {agentState === "disconnected" && (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-foreground/50 text-[10px] font-medium">
-                              Customer Support
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>

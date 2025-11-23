@@ -15,7 +15,9 @@ export const FloatingNav = ({
         className
       )}
     >
-      <span className="text-xl font-semibold text-stone-200">Nexfluc</span>
+      <span className="text-xl font-semibold text-stone-200 [text-shadow:0_0_10px_rgba(255,255,255,0.6),0_0_20px_rgba(255,255,255,0.4),0_0_30px_rgba(255,255,255,0.2)]">
+        Nexfluc - Your AI Idea Verifier
+      </span>
     </div>
   );
 }
