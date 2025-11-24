@@ -43,6 +43,14 @@ type Insights = {
       strength?: number
     }>
   }
+  tavilyResearch?: {
+    marketResearch?: string | null
+    competitorAnalysis?: string | null
+    competitorInfo?: string | null
+    designPatterns?: string | null
+    competitorColors?: string | null
+    competitorLogos?: string | null
+  }
 }
 
 type Status = "idle" | "loading" | "ready" | "error"
@@ -105,6 +113,59 @@ const MOCK_INSIGHTS: Insights = {
   },
 }
 
+// Utility function to condense and format Tavily research text into bullet points
+function formatTavilyResearch(text: string | null | undefined): string[] {
+  if (!text || text.trim().length === 0) {
+    return []
+  }
+
+  // Remove common marketing headers and fluff
+  const cleaned = text
+    .replace(/#{1,6}\s+/g, "") // Remove markdown headers
+    .replace(/\*\*/g, "") // Remove bold markers
+    .replace(/\*/g, "") // Remove bullet markers
+    .replace(/##/g, "") // Remove section markers
+    .replace(/Explore|Generate|Discover|Get|Start|Create|Choose|Follow|Use|AI-powered|AI|platform|tool|design|logo|brand/gi, "")
+    .replace(/https?:\/\/[^\s]+/g, "") // Remove URLs
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim()
+
+  // Split into sentences
+  const sentences = cleaned
+    .split(/[.!?]+/)
+    .map((s) => s.trim())
+    .filter((s) => {
+      // Filter out very short sentences, marketing fluff, and common patterns
+      if (s.length < 20) return false
+      if (s.length > 200) return false // Too long, likely not useful
+      if (/^(Generate|Create|Start|Explore|Discover|Get|Choose|Follow|Use|AI|platform|tool)/i.test(s)) return false
+      if (/color palette|logo generator|brand identity|website/i.test(s) && s.length < 50) return false
+      return true
+    })
+    .map((s) => {
+      // Clean up sentence
+      return s
+        .replace(/^\d+\.\s*/, "") // Remove numbered lists
+        .replace(/^[-•]\s*/, "") // Remove bullet markers
+        .trim()
+    })
+    .filter((s) => s.length >= 20 && s.length <= 200)
+
+  // Remove duplicates and limit to top 5-7 most relevant points
+  const unique: string[] = []
+  const seen = new Set<string>()
+  
+  for (const sentence of sentences) {
+    const normalized = sentence.toLowerCase().substring(0, 50)
+    if (!seen.has(normalized) && unique.length < 7) {
+      seen.add(normalized)
+      unique.push(sentence)
+    }
+  }
+
+  return unique
+}
+
 export interface InsightsPaneProps {
   messages?: Array<{ source: "user" | "ai"; message: string }>
   className?: string
@@ -152,6 +213,14 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
     const [selectedId, setSelectedId] = React.useState<string | null>(null)
     const [startups, setStartups] = React.useState<StartupNode[]>([])
     const [insights, setInsights] = React.useState<Insights | null>(null)
+    const [tavilyResearch, setTavilyResearch] = React.useState<{
+      marketResearch?: string | null
+      competitorAnalysis?: string | null
+      competitorInfo?: string | null
+      designPatterns?: string | null
+      competitorColors?: string | null
+      competitorLogos?: string | null
+    } | null>(null)
     const [status, setStatus] = React.useState<Status>("idle")
     const [transcription, setTranscription] = React.useState<string>("")
     const [isTranscribing, setIsTranscribing] = React.useState(false)
@@ -455,6 +524,12 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
           }
           setStartups(updatedStartups)
           setInsights(updatedInsights)
+          
+          // Store Tavily research data
+          if (data.tavilyResearch) {
+            setTavilyResearch(data.tavilyResearch)
+          }
+          
           setStatus("ready")
           
           // Notify parent component of insights update
@@ -469,6 +544,30 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
               })),
               differentiation: updatedInsights.differentiation,
             })
+          }
+
+          // Save to Supabase
+          try {
+            await fetch("/api/save-insights", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                transcription: currentTranscription || "",
+                insights: {
+                  summary: updatedInsights.summary,
+                  differentiation: updatedInsights.differentiation,
+                  startups: updatedStartups,
+                },
+                networkNodes: networkNodes.length > 0 ? networkNodes : (updatedInsights.network?.nodes || []),
+                networkEdges: networkEdges.length > 0 ? networkEdges : (updatedInsights.network?.edges || []),
+              }),
+            })
+            console.log("✅ [InsightsPane] Insights saved to Supabase")
+          } catch (saveError) {
+            console.error("❌ [InsightsPane] Failed to save insights to Supabase:", saveError)
+            // Don't throw - saving is non-critical
           }
         } catch (err) {
           console.error("Error fetching insights:", err)
@@ -807,6 +906,93 @@ export const InsightsPane = React.forwardRef<HTMLDivElement, InsightsPaneProps>(
 
             {/* Divider */}
             <div className="border-t border-stone-700/50" />
+
+            {/* Tavily Research Section */}
+            {(tavilyResearch?.competitorInfo || tavilyResearch?.designPatterns || tavilyResearch?.competitorColors || tavilyResearch?.competitorLogos) && (
+              <>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-stone-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                      Market Intelligence
+                    </h3>
+                  </div>
+
+                  {tavilyResearch.competitorInfo && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        Competitor Analysis
+                      </h4>
+                      <div className="rounded-lg border border-stone-700/50 bg-stone-800/20 p-3">
+                        <ul className="space-y-1.5">
+                          {formatTavilyResearch(tavilyResearch.competitorInfo).map((point, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-xs leading-relaxed text-stone-300">
+                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-stone-500" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {tavilyResearch.designPatterns && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        Design Trends
+                      </h4>
+                      <div className="rounded-lg border border-stone-700/50 bg-stone-800/20 p-3">
+                        <ul className="space-y-1.5">
+                          {formatTavilyResearch(tavilyResearch.designPatterns).map((point, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-xs leading-relaxed text-stone-300">
+                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-stone-500" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {tavilyResearch.competitorColors && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        Competitor Color Schemes
+                      </h4>
+                      <div className="rounded-lg border border-stone-700/50 bg-stone-800/20 p-3">
+                        <ul className="space-y-1.5">
+                          {formatTavilyResearch(tavilyResearch.competitorColors).map((point, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-xs leading-relaxed text-stone-300">
+                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-stone-500" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {tavilyResearch.competitorLogos && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        Competitor Logo Styles
+                      </h4>
+                      <div className="rounded-lg border border-stone-700/50 bg-stone-800/20 p-3">
+                        <ul className="space-y-1.5">
+                          {formatTavilyResearch(tavilyResearch.competitorLogos).map((point, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-xs leading-relaxed text-stone-300">
+                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-stone-500" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-stone-700/50" />
+              </>
+            )}
 
             {/* Differentiation Section */}
             <div className="space-y-4">

@@ -27,10 +27,19 @@ export async function POST(request: NextRequest) {
     for (const entity of entities) {
       try {
         const searchQuery = `${entity.label} ${entity.type}`
-        const searchResults = await tavily.search(searchQuery, {
-          maxResults: 3,
-          includeAnswer: true,
-          includeRawContent: false,
+        console.log(`  - Enriching entity: ${entity.label} (${entity.type})`)
+        
+        const searchResults = await tavily.search({
+          query: searchQuery,
+          search_depth: "basic",
+          include_answer: true,
+          max_results: 3,
+        })
+
+        console.log(`  - ✅ Enriched ${entity.label}:`, {
+          hasAnswer: !!searchResults.answer,
+          answerLength: searchResults.answer?.length || 0,
+          resultsCount: searchResults.results?.length || 0,
         })
 
         enrichedNodes.push({
@@ -42,8 +51,16 @@ export async function POST(request: NextRequest) {
           })) || [],
           relevance: searchResults.results?.length || 0,
         })
-      } catch (error) {
-        console.error(`Error enriching entity ${entity.label}:`, error)
+      } catch (error: any) {
+        console.error(`  - ❌ Error enriching entity ${entity.label}:`, error)
+        
+        // Check for specific Tavily API errors
+        if (error?.response?.status === 432) {
+          console.error(`  - Tavily API error 432 (rate limit or invalid key) for ${entity.label}`)
+        } else if (error?.response?.status) {
+          console.error(`  - Tavily API error ${error.response.status} for ${entity.label}`)
+        }
+        
         // Add entity without enrichment if Tavily fails
         enrichedNodes.push(entity)
       }

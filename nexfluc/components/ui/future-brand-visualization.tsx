@@ -26,8 +26,6 @@ interface BrandData {
   tagline: string[]
   colorPalette: Array<{ name: string; hex: string }>
   designRationale: string
-  logo?: string | null
-  logoMimeType?: string | null
 }
 
 export const FutureBrandVisualization: React.FC<FutureBrandVisualizationProps> = ({
@@ -142,6 +140,25 @@ export const FutureBrandVisualization: React.FC<FutureBrandVisualizationProps> =
 
         console.log("✅ [FutureBrandVisualization] Setting brand data")
         setBrandData(data)
+
+        // Save to Supabase
+        try {
+          await fetch("/api/save-brand", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              transcription: transcription || "",
+              insights: insights || {},
+              brandData: data,
+            }),
+          })
+          console.log("✅ [FutureBrandVisualization] Brand data saved to Supabase")
+        } catch (saveError) {
+          console.error("❌ [FutureBrandVisualization] Failed to save brand data to Supabase:", saveError)
+          // Don't throw - saving is non-critical
+        }
       } catch (err) {
         console.error("❌ [FutureBrandVisualization] Error generating brand:", err)
         console.error("  - Error type:", err instanceof Error ? err.constructor.name : typeof err)
@@ -239,31 +256,6 @@ export const FutureBrandVisualization: React.FC<FutureBrandVisualizationProps> =
               Future Brand Identity
             </span>
           </div>
-
-          {/* Logo */}
-          {brandData.logo ? (
-            <div className="flex items-center justify-center rounded-lg border border-stone-700/50 bg-stone-800/20 p-6">
-              <img
-                src={brandData.logo}
-                alt="Generated Logo"
-                className="max-h-32 max-w-full object-contain"
-                onError={(e) => {
-                  console.error("❌ [FutureBrandVisualization] Image load error:", e)
-                  console.error("  - Image src:", brandData.logo?.substring(0, 100))
-                }}
-                onLoad={() => {
-                  console.log("✅ [FutureBrandVisualization] Logo image loaded successfully")
-                }}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center rounded-lg border border-stone-700/50 bg-stone-800/20 p-6">
-              <div className="flex flex-col items-center gap-2 text-stone-500">
-                <Sparkles className="h-6 w-6" />
-                <p className="text-xs text-center">No logo generated yet</p>
-              </div>
-            </div>
-          )}
 
           {/* Name Selection */}
           {brandData.name && brandData.name.length > 0 && (
